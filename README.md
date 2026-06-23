@@ -392,3 +392,36 @@ Manikanta P
 [Open the deployed Day AI Planner](https://YOUR-STREAMLIT-APP-URL.streamlit.app)
 
 The application is deployed on Streamlit Community Cloud and connected to the GitHub repository.
+
+## Application Screenshots
+
+### Application Overview
+
+The Day AI Planner provides two main sections: **Create Plan** and **Plan History**. Users can generate personalized schedules and manage previously saved plans.
+
+![Day AI Planner Overview](assets/screenshots/app-overview.png)
+
+### Create a Daily Plan
+
+Users enter their wake-up time, sleep target, work hours, important tasks, goals, energy period, and additional preferences.
+
+![Create Plan Form](assets/screenshots/create-plan-form.png)
+
+### AI-Generated Daily Schedule
+
+The application sends the user's information to the Groq-hosted Llama model and receives a structured daily schedule containing times, activities, priorities, categories, and notes.
+
+![AI-Generated Daily Plan](assets/screenshots/generated-plan.png)
+
+### Saved Plan History
+
+Generated schedules are stored in SQLite. The Plan History section displays the plan ID, creation time, summary, schedule-item count, and model used.
+
+![Saved Plan History](assets/screenshots/plan-history.png)
+
+### View and Manage Saved Plans
+
+Users can view a complete saved schedule, edit schedule details, normalize time values, download the plan, or permanently delete it.
+
+![View and Manage Saved Plans](assets/screenshots/saved-plan-view.png)
+
