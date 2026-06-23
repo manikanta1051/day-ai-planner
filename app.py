@@ -6,27 +6,14 @@ Purpose:
     viewing, editing, downloading, and deleting daily plans.
 
 Main features:
-    1. Generate personalized plans using Groq.
-    2. Save generated plans into SQLite.
-    3. Display saved-plan history.
-    4. Edit saved schedules.
-    5. Normalize flexible time entries.
-    6. Refresh edited values after saving.
-    7. Download plans as JSON and CSV.
+    1. Display an empty new-plan form.
+    2. Show light placeholder examples.
+    3. Generate plans using Groq.
+    4. Save plans in SQLite.
+    5. View saved-plan history.
+    6. Edit and normalize schedule times.
+    7. Download JSON and CSV files.
     8. Delete saved plans.
-
-Important time behavior:
-    Values such as:
-        9.45
-        9;45
-        945
-        9.45am
-
-    are converted after the user clicks:
-        Save Plan Changes
-
-    Example:
-        9.45 becomes 9:45 AM
 """
 
 import json
@@ -35,10 +22,7 @@ from typing import Any
 
 import streamlit as st
 
-# --------------------------------------------------
-# Import database functions
-# --------------------------------------------------
-
+# Import SQLite database functions.
 from database.database_service import (
     delete_plan,
     get_plan_by_id,
@@ -47,36 +31,24 @@ from database.database_service import (
     update_plan,
 )
 
-# --------------------------------------------------
-# Import Groq planning functions
-# --------------------------------------------------
-
+# Import Groq planning functions.
 from services.planner_service import (
     generate_daily_plan,
     get_model_name,
 )
 
-# --------------------------------------------------
-# Import export functions
-# --------------------------------------------------
-
+# Import JSON and CSV export functions.
 from utils.exporters import (
     plan_to_csv,
     plan_to_json,
 )
 
-# --------------------------------------------------
-# Import time-normalization function
-# --------------------------------------------------
-
+# Import flexible time normalization.
 from utils.time_utils import (
     normalize_edited_schedule,
 )
 
-# --------------------------------------------------
-# Import validation functions
-# --------------------------------------------------
-
+# Import form and plan validation.
 from utils.validators import (
     validate_plan,
     validate_user_inputs,
@@ -95,24 +67,26 @@ st.set_page_config(
 
 
 # --------------------------------------------------
-# Function: Format form time
+# Function: Format a selected form time
 # --------------------------------------------------
 
-def format_time(value: time) -> str:
+def format_time(
+    value: time,
+) -> str:
     """
-    Convert a Python time object into AM/PM text.
+    Convert a Python time object into h:mm AM/PM text.
 
     Parameters:
         value:
-            Time selected through st.time_input.
+            Time selected using st.time_input.
 
     Returns:
         str:
-            Time in h:mm AM/PM format.
+            Formatted time text.
 
-    Example:
-        08:00:00 becomes 8:00 AM.
-        18:30:00 becomes 6:30 PM.
+    Examples:
+        08:00 becomes 8:00 AM.
+        18:30 becomes 6:30 PM.
     """
 
     return value.strftime(
@@ -128,15 +102,12 @@ def get_editor_version(
     plan_id: int,
 ) -> int:
     """
-    Return the current editor version for a saved plan.
+    Return the current version of a saved-plan editor.
 
-    Why this is required:
-        Streamlit widgets preserve their values when the same
-        widget key is used during a rerun.
-
-        After saving normalized values, we increase the editor
-        version. This gives the editor a new key and forces it
-        to reload the updated database values.
+    Streamlit widgets preserve values when their keys
+    remain the same. The editor version is increased
+    after a saved plan is updated so that normalized
+    database values appear in fresh widgets.
 
     Parameters:
         plan_id:
@@ -144,47 +115,30 @@ def get_editor_version(
 
     Returns:
         int:
-            Current editor version number.
+            Current editor version.
     """
 
-    # Create a separate Session State variable
-    # for each saved plan.
-    version_state_key = (
+    state_key = (
         f"edit_form_version_{plan_id}"
     )
 
-    # Start at version zero when the plan has
-    # not been edited during this browser session.
-    if version_state_key not in st.session_state:
-        st.session_state[
-            version_state_key
-        ] = 0
+    if state_key not in st.session_state:
+        st.session_state[state_key] = 0
 
     return int(
-        st.session_state[
-            version_state_key
-        ]
+        st.session_state[state_key]
     )
 
 
 # --------------------------------------------------
-# Function: Refresh editor after database update
+# Function: Refresh editor after update
 # --------------------------------------------------
 
 def advance_editor_version(
     plan_id: int,
 ) -> None:
     """
-    Increase the editor version after saving changes.
-
-    Increasing the version changes the keys used by:
-        - Summary text area
-        - Schedule data editor
-        - Warnings text area
-        - Edit form
-
-    Streamlit then creates fresh widgets using the
-    normalized values loaded from SQLite.
+    Increase a saved-plan editor's version.
 
     Parameters:
         plan_id:
@@ -194,26 +148,24 @@ def advance_editor_version(
         None
     """
 
-    version_state_key = (
+    state_key = (
         f"edit_form_version_{plan_id}"
     )
 
     current_version = int(
         st.session_state.get(
-            version_state_key,
+            state_key,
             0,
         )
     )
 
-    # Increase the version so the next rerun
-    # uses completely new widget keys.
     st.session_state[
-        version_state_key
+        state_key
     ] = current_version + 1
 
 
 # --------------------------------------------------
-# Function: Display one daily plan
+# Function: Display one plan
 # --------------------------------------------------
 
 def display_daily_plan(
@@ -222,12 +174,12 @@ def display_daily_plan(
     show_metadata: bool = False,
 ) -> None:
     """
-    Display one generated or saved daily plan.
+    Display a generated or saved daily plan.
 
-    This function displays:
+    The function displays:
         - Plan metadata
         - Summary
-        - Schedule
+        - Schedule table
         - Warnings
         - Raw JSON
         - JSON download
@@ -235,15 +187,14 @@ def display_daily_plan(
 
     Parameters:
         daily_plan:
-            Dictionary containing the plan.
+            Complete daily-plan dictionary.
 
         download_prefix:
-            Prefix used for download filenames and
-            Streamlit widget keys.
+            Prefix used for downloaded filenames
+            and Streamlit widget keys.
 
         show_metadata:
-            When True, display Plan ID, creation time,
-            and model name.
+            Display database metadata when True.
 
     Returns:
         None
@@ -262,7 +213,6 @@ def display_daily_plan(
         ) = st.columns(3)
 
         with id_column:
-
             st.metric(
                 label="Plan ID",
                 value=daily_plan.get(
@@ -272,7 +222,6 @@ def display_daily_plan(
             )
 
         with date_column:
-
             st.metric(
                 label="Created at",
                 value=daily_plan.get(
@@ -282,7 +231,6 @@ def display_daily_plan(
             )
 
         with model_column:
-
             st.metric(
                 label="Model",
                 value=daily_plan.get(
@@ -302,7 +250,7 @@ def display_daily_plan(
     )
 
     # ----------------------------------------------
-    # Display schedule table
+    # Display schedule
     # ----------------------------------------------
 
     st.subheader("Schedule")
@@ -365,10 +313,7 @@ def display_daily_plan(
             data=json_download_data,
             file_name=f"{download_prefix}.json",
             mime="application/json",
-            key=(
-                f"{download_prefix}_"
-                "json_download"
-            ),
+            key=f"{download_prefix}_json_download",
             on_click="ignore",
             use_container_width=True,
         )
@@ -380,10 +325,7 @@ def display_daily_plan(
             data=csv_download_data,
             file_name=f"{download_prefix}.csv",
             mime="text/csv",
-            key=(
-                f"{download_prefix}_"
-                "csv_download"
-            ),
+            key=f"{download_prefix}_csv_download",
             on_click="ignore",
             use_container_width=True,
         )
@@ -396,8 +338,9 @@ def display_daily_plan(
 st.title("📅 Day AI Planner")
 
 st.write(
-    "Create personalized daily schedules and manage "
-    "previously saved plans."
+    "Enter your schedule, important tasks, goals, "
+    "and preferences. The AI will create a balanced "
+    "daily plan."
 )
 
 st.caption(
@@ -406,7 +349,7 @@ st.caption(
 
 
 # --------------------------------------------------
-# Main navigation tabs
+# Main application tabs
 # --------------------------------------------------
 
 create_plan_tab, plan_history_tab = st.tabs(
@@ -418,13 +361,18 @@ create_plan_tab, plan_history_tab = st.tabs(
 
 
 # ==================================================
-# TAB 1: CREATE PLAN
+# TAB 1: CREATE A NEW PLAN
 # ==================================================
 
 with create_plan_tab:
 
     st.header(
         "Create a new daily plan"
+    )
+
+    st.caption(
+        "All required fields start empty. "
+        "Light example text shows what to enter."
     )
 
     # ----------------------------------------------
@@ -439,78 +387,86 @@ with create_plan_tab:
             "Daily timings"
         )
 
+        st.caption(
+            "Select each time using the time picker."
+        )
+
         left_column, right_column = st.columns(
             2
         )
 
         with left_column:
 
-            # User's wake-up time.
+            # Empty time selector.
             wake_up_time = st.time_input(
                 "Wake-up time",
-                value=time(
-                    8,
-                    0,
-                ),
+                value=None,
+                step=900,
+                help="Select the time when your day begins.",
             )
 
-            # Beginning of user's work schedule.
+            # Empty time selector.
             work_start_time = st.time_input(
                 "Work start time",
-                value=time(
-                    10,
-                    0,
-                ),
+                value=None,
+                step=900,
+                help="Select the time when work begins.",
             )
 
         with right_column:
 
-            # User's target bedtime.
+            # Empty time selector.
             sleep_time = st.time_input(
                 "Sleep target",
-                value=time(
-                    23,
-                    30,
-                ),
+                value=None,
+                step=900,
+                help="Select your target bedtime.",
             )
 
-            # End of user's work schedule.
+            # Empty time selector.
             work_end_time = st.time_input(
                 "Work end time",
-                value=time(
-                    18,
-                    0,
-                ),
+                value=None,
+                step=900,
+                help="Select the time when work ends.",
             )
 
         st.subheader(
             "Tasks and goals"
         )
 
-        # Enter one important task on each line.
+        # Empty text area with a light placeholder.
         important_tasks_text = st.text_area(
             "Important tasks",
-            value=(
-                "Complete GenAI learning\n"
+            value="",
+            placeholder=(
+                "Example:\n"
+                "Complete one GenAI lesson\n"
                 "Apply for two jobs\n"
-                "Prepare for interview"
+                "Prepare for an interview"
             ),
-            help="Enter one task per line.",
+            help="Enter one important task per line.",
         )
 
-        # User's study objective.
+        # Empty text input with a light placeholder.
         study_goal = st.text_input(
             "Study goal",
-            value="Study GenAI for 2 hours",
+            value="",
+            placeholder=(
+                "Example: Study GenAI for 2 hours"
+            ),
         )
 
-        # User's exercise objective.
+        # Empty text input with a light placeholder.
         exercise_goal = st.text_input(
             "Exercise goal",
-            value="Walk for 30 minutes",
+            value="",
+            placeholder=(
+                "Example: Walk for 30 minutes"
+            ),
         )
 
-        # Period when the user has the most energy.
+        # Empty selection with a light placeholder.
         energy_level = st.selectbox(
             "Highest-energy period",
             options=[
@@ -519,14 +475,18 @@ with create_plan_tab:
                 "Evening",
                 "Consistent throughout the day",
             ],
-            index=2,
+            index=None,
+            placeholder=(
+                "Select your highest-energy period"
+            ),
         )
 
-        # Optional personal scheduling instructions.
+        # Empty text area with a light placeholder.
         additional_notes = st.text_area(
             "Additional preferences",
+            value="",
             placeholder=(
-                "Example: Keep the morning light, "
+                "Example: Take a short break after lunch, "
                 "include two coffee breaks, or schedule "
                 "a walk after dinner."
             ),
@@ -539,12 +499,12 @@ with create_plan_tab:
         )
 
     # ----------------------------------------------
-    # Process new-plan form
+    # Process submitted new-plan form
     # ----------------------------------------------
 
     if submitted:
 
-        # Convert multiline task text into a list.
+        # Convert one-task-per-line text into a list.
         tasks = [
             task.strip()
             for task
@@ -552,7 +512,7 @@ with create_plan_tab:
             if task.strip()
         ]
 
-        # Validate user-entered values.
+        # Validate required form information.
         validation_errors = validate_user_inputs(
             wake_up_time=wake_up_time,
             sleep_time=sleep_time,
@@ -560,34 +520,48 @@ with create_plan_tab:
             work_end_time=work_end_time,
             tasks=tasks,
             study_goal=study_goal,
+            energy_level=energy_level,
         )
 
+        # Show all validation problems.
         if validation_errors:
 
+            st.error(
+                "Complete the required fields before "
+                "generating your plan."
+            )
+
             for validation_error in validation_errors:
-                st.error(
-                    validation_error
-                )
+                st.warning(validation_error)
 
         else:
 
-            # Convert task list into prompt bullet points.
+            # Validation confirms these values are not None.
+            assert wake_up_time is not None
+            assert sleep_time is not None
+            assert work_start_time is not None
+            assert work_end_time is not None
+            assert energy_level is not None
+
+            # Convert tasks into prompt bullet points.
             formatted_tasks = "\n".join(
                 f"- {task}"
                 for task in tasks
             )
 
+            # Exercise is optional.
             exercise_goal_value = (
                 exercise_goal.strip()
                 or "No exercise goal provided."
             )
 
+            # Additional preferences are optional.
             additional_notes_value = (
                 additional_notes.strip()
                 or "No additional preferences provided."
             )
 
-            # Build the complete user prompt.
+            # Build the user prompt.
             user_prompt = f"""
 Create my complete daily plan.
 
@@ -617,12 +591,12 @@ Additional preferences:
                     "Generating your daily plan..."
                 ):
 
-                    # Generate and normalize the schedule.
+                    # Generate a structured plan through Groq.
                     daily_plan = generate_daily_plan(
                         user_prompt
                     )
 
-                # Save the generated schedule in SQLite.
+                # Save the generated plan in SQLite.
                 saved_plan_id = save_plan(
                     daily_plan=daily_plan,
                     model_name=get_model_name(),
@@ -674,8 +648,8 @@ with plan_history_tab:
     )
 
     st.write(
-        "View, edit, download, or delete "
-        "previously saved plans."
+        "View, edit, download, or delete previously "
+        "saved plans."
     )
 
     # ----------------------------------------------
@@ -688,9 +662,7 @@ with plan_history_tab:
     )
 
     if update_message:
-        st.success(
-            update_message
-        )
+        st.success(update_message)
 
     # ----------------------------------------------
     # Show deletion message after rerun
@@ -702,13 +674,11 @@ with plan_history_tab:
     )
 
     if deletion_message:
-        st.success(
-            deletion_message
-        )
+        st.success(deletion_message)
 
     try:
 
-        # Load recent saved plans.
+        # Retrieve saved plans.
         plan_history = get_plan_history(
             limit=50
         )
@@ -723,7 +693,7 @@ with plan_history_tab:
         else:
 
             # --------------------------------------
-            # Display history table
+            # Display recent plans
             # --------------------------------------
 
             st.subheader(
@@ -736,10 +706,10 @@ with plan_history_tab:
                 hide_index=True,
             )
 
-            # Create a lookup dictionary using Plan ID.
+            # Create a lookup dictionary by Plan ID.
             history_by_id = {
-                history_item["id"]: history_item
-                for history_item in plan_history
+                item["id"]: item
+                for item in plan_history
             }
 
             plan_id_options = list(
@@ -747,7 +717,7 @@ with plan_history_tab:
             )
 
             # --------------------------------------
-            # Select one saved plan
+            # Select a saved plan
             # --------------------------------------
 
             selected_plan_id = st.selectbox(
@@ -764,7 +734,6 @@ with plan_history_tab:
                 selected_plan_id
             )
 
-            # Retrieve complete selected-plan information.
             selected_plan = get_plan_by_id(
                 selected_plan_id
             )
@@ -784,9 +753,9 @@ with plan_history_tab:
                 )
 
                 (
-                    view_saved_plan_tab,
-                    edit_saved_plan_tab,
-                    delete_saved_plan_tab,
+                    view_plan_tab,
+                    edit_plan_tab,
+                    delete_plan_tab,
                 ) = st.tabs(
                     [
                         "View Plan",
@@ -799,7 +768,7 @@ with plan_history_tab:
                 # VIEW SAVED PLAN
                 # ==================================
 
-                with view_saved_plan_tab:
+                with view_plan_tab:
 
                     display_daily_plan(
                         daily_plan=selected_plan,
@@ -813,7 +782,7 @@ with plan_history_tab:
                 # EDIT SAVED PLAN
                 # ==================================
 
-                with edit_saved_plan_tab:
+                with edit_plan_tab:
 
                     st.subheader(
                         f"Edit Plan {selected_plan_id}"
@@ -821,67 +790,50 @@ with plan_history_tab:
 
                     st.info(
                         "Enter flexible time values and click "
-                        "Save Plan Changes. The saved values will "
-                        "then be displayed in h:mm AM/PM format."
+                        "Save Plan Changes. Times will be "
+                        "normalized to h:mm AM/PM."
                     )
 
-                    st.caption(
-                        "Accepted examples: 9.45, 9;45, 945, "
-                        "9.45am, 9:45 AM, and 14:30."
-                    )
-
-                    # Get the current editor version.
                     editor_version = get_editor_version(
                         selected_plan_id
                     )
 
-                    # Build fresh widget keys using the version.
                     edit_form_key = (
-                        f"edit_plan_form_"
-                        f"{selected_plan_id}_"
+                        f"edit_form_{selected_plan_id}_"
                         f"{editor_version}"
                     )
 
-                    summary_widget_key = (
-                        f"edit_summary_"
-                        f"{selected_plan_id}_"
+                    summary_key = (
+                        f"edit_summary_{selected_plan_id}_"
                         f"{editor_version}"
                     )
 
-                    schedule_widget_key = (
-                        f"edit_schedule_"
-                        f"{selected_plan_id}_"
+                    schedule_key = (
+                        f"edit_schedule_{selected_plan_id}_"
                         f"{editor_version}"
                     )
 
-                    warnings_widget_key = (
-                        f"edit_warnings_"
-                        f"{selected_plan_id}_"
+                    warnings_key = (
+                        f"edit_warnings_{selected_plan_id}_"
                         f"{editor_version}"
                     )
-
-                    # ----------------------------------
-                    # Edit form
-                    # ----------------------------------
 
                     with st.form(
                         edit_form_key
                     ):
 
-                        # Edit plan summary.
                         edited_summary = st.text_area(
                             "Plan summary",
                             value=selected_plan[
                                 "summary"
                             ],
-                            key=summary_widget_key,
+                            key=summary_key,
                         )
 
                         st.write(
                             "Edit schedule"
                         )
 
-                        # Editable schedule table.
                         edited_schedule_data = st.data_editor(
                             selected_plan[
                                 "schedule"
@@ -903,7 +855,7 @@ with plan_history_tab:
                                         "Start Time",
                                         help=(
                                             "Examples: 9.45, "
-                                            "9:45 AM, 945"
+                                            "9:45 AM, or 14:30"
                                         ),
                                         required=True,
                                     )
@@ -913,7 +865,7 @@ with plan_history_tab:
                                         "End Time",
                                         help=(
                                             "Examples: 10.15, "
-                                            "10;15am, 22:15"
+                                            "10;15 AM, or 22:15"
                                         ),
                                         required=True,
                                     )
@@ -944,14 +896,12 @@ with plan_history_tab:
                                 "notes": (
                                     st.column_config.TextColumn(
                                         "Notes",
-                                        required=False,
                                     )
                                 ),
                             },
-                            key=schedule_widget_key,
+                            key=schedule_key,
                         )
 
-                        # Edit warnings.
                         edited_warnings_text = st.text_area(
                             "Warnings",
                             value="\n".join(
@@ -962,13 +912,12 @@ with plan_history_tab:
                                     [],
                                 )
                             ),
-                            help=(
-                                "Enter one warning per line."
+                            placeholder=(
+                                "Example: Schedule may be busy."
                             ),
-                            key=warnings_widget_key,
+                            key=warnings_key,
                         )
 
-                        # Save all edited form values.
                         save_changes_clicked = (
                             st.form_submit_button(
                                 "Save Plan Changes",
@@ -977,20 +926,11 @@ with plan_history_tab:
                             )
                         )
 
-                    # ----------------------------------
-                    # Process edited plan
-                    # ----------------------------------
-
                     if save_changes_clicked:
 
                         try:
 
-                            # Normalize flexible time values.
-                            #
-                            # Examples:
-                            # 9.45 becomes 9:45 AM.
-                            # 8.30 in an evening row becomes
-                            # 8:30 PM based on schedule context.
+                            # Normalize edited schedule times.
                             edited_schedule = (
                                 normalize_edited_schedule(
                                     edited_schedule_data,
@@ -1010,7 +950,6 @@ with plan_history_tab:
                                 if warning.strip()
                             ]
 
-                            # Build the edited plan dictionary.
                             edited_plan = {
                                 "summary": (
                                     edited_summary.strip()
@@ -1024,7 +963,7 @@ with plan_history_tab:
                                 edited_plan
                             )
 
-                            # Save normalized values into SQLite.
+                            # Save changes in SQLite.
                             was_updated = update_plan(
                                 plan_id=selected_plan_id,
                                 daily_plan=edited_plan,
@@ -1032,37 +971,29 @@ with plan_history_tab:
 
                             if was_updated:
 
-                                # Give widgets new keys during
-                                # the following rerun.
                                 advance_editor_version(
                                     selected_plan_id
                                 )
 
-                                # Store success message.
                                 st.session_state[
                                     "update_message"
                                 ] = (
                                     f"Plan {selected_plan_id} "
-                                    "was updated successfully. "
-                                    "Time values were normalized."
+                                    "was updated successfully."
                                 )
 
-                                # Reload the application and
-                                # retrieve fresh database values.
                                 st.rerun()
 
                             else:
 
                                 st.error(
-                                    "The selected Plan ID "
-                                    "was not found."
+                                    "The selected plan was not found."
                                 )
 
                         except Exception as update_error:
 
                             st.error(
-                                "The plan changes could not "
-                                "be saved."
+                                "The plan changes could not be saved."
                             )
 
                             st.code(
@@ -1073,7 +1004,7 @@ with plan_history_tab:
                 # DELETE SAVED PLAN
                 # ==================================
 
-                with delete_saved_plan_tab:
+                with delete_plan_tab:
 
                     st.subheader(
                         f"Delete Plan {selected_plan_id}"
@@ -1084,7 +1015,6 @@ with plan_history_tab:
                         "permanent and cannot be reversed."
                     )
 
-                    # Require explicit confirmation.
                     deletion_confirmed = st.checkbox(
                         (
                             "I understand that this will "
@@ -1092,26 +1022,25 @@ with plan_history_tab:
                             f"{selected_plan_id}."
                         ),
                         key=(
-                            f"confirm_delete_plan_"
+                            f"confirm_delete_"
                             f"{selected_plan_id}"
                         ),
                     )
 
-                    # Disable button until confirmation.
-                    delete_button_clicked = st.button(
+                    delete_clicked = st.button(
                         label=(
                             f"Delete Plan {selected_plan_id}"
                         ),
                         type="primary",
                         disabled=not deletion_confirmed,
                         key=(
-                            f"delete_plan_button_"
+                            f"delete_button_"
                             f"{selected_plan_id}"
                         ),
                         use_container_width=True,
                     )
 
-                    if delete_button_clicked:
+                    if delete_clicked:
 
                         try:
 
@@ -1133,8 +1062,7 @@ with plan_history_tab:
                             else:
 
                                 st.error(
-                                    "The selected plan was "
-                                    "not found."
+                                    "The selected plan was not found."
                                 )
 
                         except Exception as delete_error:
