@@ -387,3 +387,8 @@ Possible future enhancements include:
 ## Author
 
 Manikanta P
+## Live Application
+
+[Open the deployed Day AI Planner](https://YOUR-STREAMLIT-APP-URL.streamlit.app)
+
+The application is deployed on Streamlit Community Cloud and connected to the GitHub repository.
