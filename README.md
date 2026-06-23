@@ -395,11 +395,13 @@ The application is deployed on Streamlit Community Cloud and connected to the Gi
 
 ## Application Screenshots
 
+
 ### Application Overview
 
 The Day AI Planner provides two main sections: **Create Plan** and **Plan History**. Users can generate personalized schedules and manage previously saved plans.
 
 ![Day AI Planner Overview](assets/screenshots/app-overview.png)
+
 
 ### Create a Daily Plan
 
@@ -424,4 +426,52 @@ Generated schedules are stored in SQLite. The Plan History section displays the 
 Users can view a complete saved schedule, edit schedule details, normalize time values, download the plan, or permanently delete it.
 
 ![View and Manage Saved Plans](assets/screenshots/saved-plan-view.png)
+
+## Application Architecture
+
+```mermaid
+flowchart TD
+    A[User] --> B[Streamlit Interface]
+
+    B --> C[Input Validation]
+    C -->|Valid input| D[Prompt Builder]
+    C -->|Invalid input| E[Display Validation Errors]
+
+    D --> F[Groq API]
+    F --> G[Llama Model]
+    G --> H[Structured JSON Response]
+
+    H --> I[JSON Parsing and Validation]
+    I --> J[Time Normalization]
+    J --> K[SQLite Database]
+
+    K --> L[Plan History]
+    K --> M[Edit Saved Plan]
+    K --> N[Delete Saved Plan]
+
+    J --> O[Display Generated Schedule]
+    O --> P[Download JSON]
+    O --> Q[Download CSV]
+
+    R[Automated Unit Tests] --> C
+    R --> I
+    R --> J
+    R --> K
+
+    S[GitHub Actions CI] --> R
+    T[Streamlit Community Cloud] --> B
+```
+
+### Architecture Flow
+
+1. The user enters daily timings, tasks, goals, and preferences through the Streamlit interface.
+2. The application validates all required form values before contacting the AI service.
+3. A structured prompt is created and sent to the Groq API.
+4. The Llama model generates the daily plan as structured JSON.
+5. The response is parsed, validated, and normalized into consistent time formats.
+6. The completed plan is displayed and saved in SQLite.
+7. Users can view, edit, download, or delete saved plans.
+8. Automated tests validate time-processing and database operations.
+9. GitHub Actions runs all tests automatically after repository updates.
+10. Streamlit Community Cloud hosts the deployed application.
 
